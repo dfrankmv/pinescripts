@@ -1,0 +1,355 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © dfrankmv
+
+//@version=5
+strategy("INF_TRAILING_3", overlay=true, margin_long=100, margin_short=100, process_orders_on_close = true, max_labels_count = 500)
+
+import dfrankmv/BINANCE/4 as b
+import dfrankmv/Helpers/4 as h
+
+
+
+
+
+// ********************************************************************************************************************* INPUT 
+var TAG                 = input.string("2024/05/05 14:54 ARB", "TAG")
+var INITIAL_CAPITAL     = input.float(10000, "INITIAL_CAPITAL")
+var ORDER_AMT           = input.float(10.0, "ORDER_AMT")
+var TAKE_PROFIT         = input.float(0.5, "TAKE_PROFIT")
+var MAX_PYRAMID         = input.int(5, "MAX_PIRAMYD")
+var TRAILING_DISTANCE   = input.float(2.0, "TRAILING_DISTANCE")
+var RAW                 = input.text_area("2024/05/05 14:54 ARB", "RAW")
+var FROM                = h.parse_raw(RAW)
+
+
+
+
+
+// ********************************************************************************************************************* CONSTANTS 
+var SIDE_LONG       = 0
+var SIDE_SHORT      = 1
+
+var STATUS_NEW      = 0
+var STATUS_RUNNING  = 1
+var STATUS_LOCKED   = 2 
+var STATUS_TRAILING = 3  
+var STATUS_TRIGGERED= 4 
+
+var MODE_NORMAL     = 0 // TRAILING MODE NORMAL 
+var MODE_REVERSE    = 1 // TRAILING MODE REVERSE 
+
+var COLOR_TRANSPARENT       = #0000ff00
+var COLOR_LONG              = #00ff00
+var COLOR_LONG_OPEN         = #83d186
+var COLOR_LONG_CLOSE        = #1b641d
+var COLOR_LONG_AVG          = #0ae2ff
+var COLOR_LONG_TRAILING     = #00ff00aa
+var COLOR_SHORT             = #ff0000
+var COLOR_SHORT_OPEN        = #fd6b6b
+var COLOR_SHORT_CLOSE       = #7a1919 
+var COLOR_SHORT_AVG         = #f09d22
+var COLOR_SHORT_TRAILING    = #ff0000aa
+
+
+
+
+
+// ********************************************************************************************************************* GLOBAL TYPE
+type Global
+    string  pair            = ""
+    float   initial_capital = 0.0
+    int     price_decs      = 0
+    int     qty_decs        = 0
+    float   cash            = 0.0
+    float   equity          = 0.0
+
+new_global() =>
+    _pair = str.replace(syminfo.ticker, ".P", "")
+    [_price_decs, _qty_decs] = b.get_decimals(_pair)
+    _global = Global.new(_pair, INITIAL_CAPITAL, _price_decs, _qty_decs)
+    _global.cash := _global.initial_capital
+    _global.equity := _global.initial_capital
+    _global
+
+var GLOBAL = new_global()
+
+
+
+
+
+// ********************************************************************************************************************* HELPER FUNCTIONS
+round_to_minprice(float price)  => math.round(price, GLOBAL.price_decs)
+round_to_minqty(float qty)      => math.round(qty, GLOBAL.qty_decs)
+
+
+
+
+
+// ********************************************************************************************************************* TRAILING TYPE 
+type Trailing
+    int     status          = 0     // STATUS_NEW
+    int     side            = 0     // SIDE_LONG
+    int     mode            = 0     // MODE_NORMAL
+    float   distance        = 0.0
+    float   distance_0      = 0.0
+    float   edge_price      = na
+    float   trigger_price   = na
+    int     algo_status     = 0
+
+method is_long(Trailing t)          => t.side == SIDE_LONG
+method is_short(Trailing t)         => t.side == SIDE_SHORT
+method is_normal(Trailing t)        => t.mode == MODE_NORMAL
+method is_reverse(Trailing t)       => t.mode == MODE_REVERSE
+method is_new(Trailing t)           => t.status == STATUS_NEW
+method is_trailing(Trailing t)      => t.status == STATUS_TRAILING
+method is_triggered(Trailing t)     => t.status == STATUS_TRIGGERED
+method is_edge_low(Trailing t)      => (t.is_long() and t.is_normal()) or (t.is_short() and t.is_reverse())
+method is_edge_high(Trailing t)     => (t.is_long() and t.is_reverse()) or (t.is_short() and t.is_normal())
+method trigger_crossed(Trailing t)  => t.is_edge_low() ? close >= t.trigger_price : close <= t.trigger_price
+method hi_lo(Trailing t)            => t.is_edge_low() ? low : high
+method edge_crossed(Trailing t)     => t.is_edge_low() ? low <= t.edge_price : high >= t.edge_price
+
+method update_trigger_price(Trailing t) => 
+    t.trigger_price := h.offset(t.edge_price, (t.is_edge_low() ? 1 : -1) * t.distance)
+
+new_trailing(side, distance, mode, algo_status) =>
+    Trailing t = Trailing.new(side=side, mode=mode, distance=distance)
+    if algo_status == STATUS_LOCKED
+        t.edge_price := na 
+    else 
+        t.edge_price := t.is_edge_low() ? low : high
+    t.distance_0 := distance
+    t
+
+method trail(Trailing t) =>
+    if t.algo_status == STATUS_LOCKED
+        t.trigger_price := na
+    else if t.is_new()
+        t.update_trigger_price()
+        t.status := STATUS_TRAILING
+    else if t.is_triggered()
+        t.trigger_price := na   // TO MAKE A BREAK IN PLOT
+        t.edge_price := t.hi_lo()
+        t.status := STATUS_NEW
+    else if t.trigger_crossed()
+        t.status := STATUS_TRIGGERED
+    else if t.edge_crossed()
+        t.edge_price := t.hi_lo()
+        t.update_trigger_price()
+    0
+
+
+
+
+
+// ********************************************************************************************************************* ALGO TYPE 
+type Algo
+    int         status          = 0     // STATUS_NEW
+    int         side            = 0     // SIDE_LONG
+    float       order_amt       = 0.0
+    float       take_profit     = 0.0
+    int         max_pyramid     = 0
+    int         from            = 0
+    float       order_amt_0     = 0.0
+    float       take_profit_0   = 0.0
+    float       amt_to_cover    = 0.0
+    float       order_qty       = 0.0
+    float       total_amt       = 0.0
+    float       total_qty       = 0.0
+    float       tp_price        = na 
+    float       avg_price       = na 
+    float       profit          = 0.0
+    int         nof_orders      = 0
+    bool        switch_signal   = false
+    float       win_profit      = 0.0 
+    float       last_price      = na 
+    int         win_streak      = 0
+    Trailing    t               = na
+    // PLOTTING
+    float       trade_history   = na
+    float       tp_history      = na
+    color       avg_color       = na
+
+method is_long(Algo algo)               => algo.side == SIDE_LONG
+method is_new(Algo algo)                => algo.status == STATUS_NEW
+method is_running(Algo algo)            => algo.status == STATUS_RUNNING
+method is_locked(Algo algo)             => algo.status == STATUS_LOCKED
+method max_pyramid_reached(Algo algo)   => algo.nof_orders % algo.max_pyramid == 0
+
+method profit(Algo algo) =>
+    if algo.nof_orders == 0
+        0.0
+    else
+        (algo.is_long() ? 1 : -1) * algo.total_qty * (close - algo.avg_price)
+
+method open_alert(Algo algo) =>
+    _pair       = str.replace(syminfo.ticker, ".P", "")
+    _side       = algo.is_long() ? "LONG" : "SHORT"
+    _action     = algo.is_long() ? "BUY" : "SELL"
+    _label_dir  = algo.is_long() ? label.style_label_up : label.style_label_down
+    _qty        = str.tostring( round_to_minqty(algo.order_qty) )
+    _color      = algo.is_long() ? COLOR_LONG_OPEN : COLOR_SHORT_OPEN
+    _msg        = _pair + "_" + _side + " " + _action + " " + _qty                                                      // BTCUSDT_LONG BUY 0.0025
+    // label.new(bar_index, close, _msg, style=_label_dir, color=_color)
+    alert(_msg, alert.freq_all)
+
+method exit_alert(Algo algo) =>
+    _pair       = str.replace(syminfo.ticker, ".P", "")
+    _side       = algo.is_long() ? "LONG" : "SHORT"
+    _action     = "CLOSE"
+    _label_dir  = algo.is_long() ? label.style_label_down : label.style_label_up
+    _color      = algo.is_long() ? COLOR_LONG_CLOSE : COLOR_SHORT_CLOSE
+    _msg        = _pair + "_" + _side + " " + _action                                                                   // BTCUSDT_LONG CLOSE
+    // label.new(bar_index, close, _msg, style=_label_dir, color=_color)
+    alert(_msg, alert.freq_all)
+
+method trade_signal(Algo algo) => 
+    ret = true 
+    ret := ret and not algo.is_locked()
+    ret := ret and algo.t.trigger_crossed()
+    // if algo.nof_orders >= 1
+    //     ret := ret and (algo.is_long() ? close < algo.avg_price : close > algo.avg_price)
+    ret
+
+method tp_signal(Algo algo) =>
+    ret = true
+    ret := ret and (algo.is_long() ? close >= algo.tp_price : close <= algo.tp_price)
+    ret
+
+method trade(Algo algo) =>
+    if algo.nof_orders % algo.max_pyramid == 0
+        if algo.amt_to_cover - algo.total_amt > 0
+            algo.order_amt := (algo.amt_to_cover - algo.total_amt) / algo.max_pyramid
+        else if algo.amt_to_cover == 0 and algo.total_amt == 0
+            algo.order_amt := algo.order_amt_0
+    qty = algo.order_amt / close 
+    algo.order_qty := qty
+    algo.total_qty += qty 
+    algo.total_amt += qty * close
+    algo.avg_price := algo.total_amt / algo.total_qty
+    algo.nof_orders += 1
+    if algo.nof_orders >= 2
+        algo.win_streak := 0
+    algo.take_profit := algo.win_streak == 0 ? algo.take_profit_0 : algo.take_profit + 0.5
+    algo.tp_price := h.offset(algo.avg_price, algo.is_long() ? algo.take_profit : -algo.take_profit)
+    // dd(algo.tp_price, 0, 800)
+    algo.open_alert()
+    // strategy.order("o", algo.is_long() ? strategy.long : strategy.short, qty)
+
+method post_trade(Algo algo) =>
+    algo.trade_history := close 
+    algo.take_profit := algo.nof_orders > 2 ? algo.take_profit_0 : algo.take_profit
+    algo.status := STATUS_RUNNING
+    algo.status := algo.max_pyramid_reached() ? STATUS_LOCKED : STATUS_RUNNING
+    if algo.is_locked()
+        algo.switch_signal := true
+
+method exit(Algo algo) =>
+    // dd("A", 18700, 18800)
+    algo.win_profit := algo.profit()
+    algo.exit_alert()
+    // strategy.order("x", algo.is_long() ? strategy.short : strategy.long, algo.total_qty)
+    algo.win_streak := algo.nof_orders >= 2 ? 0 : algo.win_streak + 1
+    algo.nof_orders := 0
+    algo.total_qty := 0
+    algo.total_amt := 0
+    algo.avg_price := na
+    algo.tp_price := na 
+    algo.order_amt := algo.order_amt_0
+
+method post_exit(Algo algo) =>
+    algo.tp_history := close
+    algo.avg_color  := COLOR_TRANSPARENT
+    // GLOBAL.cash     += algo.profit()
+    // algo.t.distance := algo.t.distance_0
+
+method preprocess(Algo algo) =>
+    algo.t.algo_status := algo.status
+    algo.t.trail()
+    algo.trade_history := na 
+    algo.tp_history := na
+    // algo.avg_color := algo.nof_orders == 0 ? algo.INVISIBLE : algo.avg_color()
+    // algo.t.trigger_color := algo.is_locked() or algo.from >= time("") ? algo.trailing.NO_COLOR : algo.trailing.trigger_color
+
+method process(Algo algo) =>
+    algo.preprocess()
+    if algo.trade_signal() and algo.from <= time("")
+        algo.trade()
+        algo.post_trade()
+    else if algo.tp_signal() 
+        algo.exit()
+        algo.post_exit()
+    0
+
+new_algo(side, order_amt, take_profit, max_pyramid, distance, from, mode, status=0) =>
+    Trailing t = new_trailing(side, distance, mode, status)
+    Algo algo = Algo.new(status, side, order_amt, take_profit, max_pyramid, from, order_amt, take_profit, t=t)
+    algo.avg_color := color.aqua
+    algo
+
+
+
+
+// ********************************************************************************************************************* PROCESS
+
+var Algo long  = new_algo(SIDE_LONG, ORDER_AMT, TAKE_PROFIT, MAX_PYRAMID, TRAILING_DISTANCE, FROM, MODE_NORMAL)
+var Algo short = new_algo(SIDE_SHORT, ORDER_AMT, TAKE_PROFIT, MAX_PYRAMID, TRAILING_DISTANCE, FROM, MODE_NORMAL, STATUS_LOCKED)
+
+long.process()
+short.process()
+
+long.amt_to_cover := short.total_amt
+short.amt_to_cover := long.total_amt
+
+if long.win_profit > 0.0 
+    GLOBAL.cash += long.win_profit
+    long.win_profit := 0.0
+
+if short.win_profit > 0.0
+    GLOBAL.cash += short.win_profit
+    short.win_profit := 0.0
+
+if long.switch_signal
+    short.status := STATUS_NEW
+    short.take_profit := short.take_profit_0
+    short.t.edge_price := short.t.hi_lo()
+    long.switch_signal := false
+
+if short.switch_signal
+    long.status := STATUS_NEW
+    long.take_profit := long.take_profit_0
+    long.t.edge_price := long.t.hi_lo()
+    short.switch_signal := false
+
+GLOBAL.equity := GLOBAL.cash + long.profit() + short.profit()
+
+plot(bar_index, "bar_index", display=display.data_window)
+
+plot(display=display.status_line, color=color.yellow, series=GLOBAL.equity, title="equity")
+plot(display=display.status_line, color=color.red, series=GLOBAL.initial_capital - ta.min(GLOBAL.equity), title="min_equity")
+plot(display=display.status_line, color=color.green, series=ta.max(GLOBAL.equity) - GLOBAL.initial_capital, title="max_equity")
+
+plot(display=display.data_window, color=color.green, series=long.status, title="long.status")
+plot(display=display.data_window, color=color.green, series=long.nof_orders, title="long.nof_orders")
+plot(display=display.data_window, color=color.green, series=long.total_amt, title="long.total_amt")
+plot(display=display.data_window, color=color.green, series=long.t.status, title="long.trailing.status")
+plot(display=display.data_window, color=color.green, series=long.t.edge_price, title="long.trailing.edge_price")
+plot(display=display.data_window, color=color.green, series=long.t.trigger_price, title="long.trailing.trigger_price")
+plot(display=display.data_window, color=color.green, series=long.tp_price, title="long.tp_price")
+plot(display=display.data_window, color=color.red, series=short.status, title="short.status")
+plot(display=display.data_window, color=color.red, series=short.nof_orders, title="short.nof_orders")
+plot(display=display.data_window, color=color.red, series=short.total_amt, title="short.total_amt")
+plot(display=display.data_window, color=color.red, series=short.t.status, title="short.trailing.status")
+plot(display=display.data_window, color=color.red, series=short.t.edge_price, title="short.trailing.edge_price")
+plot(display=display.data_window, color=color.red, series=short.t.trigger_price, title="short.trailing.trigger_price")
+plot(display=display.data_window, color=color.red, series=short.tp_price, title="short.tp_price")
+
+plot(display=display.pane, color=COLOR_LONG_TRAILING,   style=plot.style_linebr, series=long.t.trigger_price, title="long.trigger_price")
+plot(display=display.pane, color=COLOR_LONG_AVG,        style=plot.style_linebr, series=long.avg_price, title="long.avg_price", linewidth=2)
+plot(display=display.pane, color=COLOR_SHORT_TRAILING,  style=plot.style_linebr, series=short.t.trigger_price, title="short.trigger_price")
+plot(display=display.pane, color=COLOR_SHORT_AVG,       style=plot.style_linebr, series=short.avg_price, title="short.avg_price", linewidth=2)
+
+plotshape(location=location.absolute, size=size.small, display=display.pane, offset=0, style=shape.labelup,   color=COLOR_LONG_OPEN,   series=long.trade_history)
+plotshape(location=location.absolute, size=size.small, display=display.pane, offset=0, style=shape.labeldown, color=COLOR_LONG_CLOSE,  series=long.tp_history, text="🥳")
+plotshape(location=location.absolute, size=size.small, display=display.pane, offset=0, style=shape.labeldown, color=COLOR_SHORT_OPEN,  series=short.trade_history)
+plotshape(location=location.absolute, size=size.small, display=display.pane, offset=0, style=shape.labelup,   color=COLOR_SHORT_CLOSE, series=short.tp_history, text="🥳")
