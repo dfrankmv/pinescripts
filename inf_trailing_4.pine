@@ -44,7 +44,8 @@ var COLOR_LONG              = #00ff00
 var COLOR_LONG_OPEN         = color.rgb(22, 212, 181)
 var COLOR_LONG_CLOSE        = color.rgb(89, 13, 124)
 var COLOR_LONG_AVG          = #0ae2ff
-var COLOR_LONG_TRAILING     = #00ff00aa
+var COLOR_LONG_TRAILING     = color.rgb(0, 255, 0, 63)
+var COLOR_TP_LINE           = #35df7c
 var COLOR_SHORT             = #ff0000
 var COLOR_SHORT_OPEN        = #fd6b6b
 var COLOR_SHORT_CLOSE       = #7a1919 
@@ -140,7 +141,7 @@ type Algo
     int         nof_orders      = 0
     float       last_price      = na 
     float       win_amt         = 0.0
-    // int         win_streak      = 0
+    bool        bar_used        = false
     Trailing    t               = na
     float[]     open_prices     = na 
     float[]     tp_prices       = na
@@ -158,6 +159,7 @@ method is_new(Algo algo)                => algo.status == STATUS_NEW
 method is_pip(Algo algo)                => algo.status == STATUS_PIP
 method is_locked(Algo algo)             => algo.status == STATUS_LCK
 method is_not_locked(Algo algo)         => algo.status != STATUS_LCK
+method is_bar_available(Algo algo)      => algo.bar_used == false
 method unrealized(Algo algo, int idx)   => math.abs(algo.qtys.get(idx) * (algo.current_price - algo.open_prices.get(idx)))
 method Unrealized(Algo algo)            => algo.nof_orders == 0 ? 0.0 : math.abs(algo.total_qty) * (algo.current_price - algo.avg_price)
 method tp_reached(Algo algo, int idx)   => algo.current_price >= algo.tp_prices.get(idx)
@@ -200,6 +202,7 @@ method trade_signal(Algo algo) =>
     ret = true 
     ret := ret and algo.is_not_locked()
     ret := ret and algo.t.trigger_crossed()
+    ret := ret and algo.is_bar_available()
     ret
 
 method update_avg_price(Algo algo) =>
@@ -213,7 +216,7 @@ method post_trade(Algo algo) =>
     algo.trade_hist    := close 
     _tp_price           = round_to_minprice(h.offset(algo.current_price, algo.tp_dist))
     algo.tp_prices.push(_tp_price)
-    algo.tp_lines.push(line.new(bar_index, math.abs(_tp_price), bar_index+1, math.abs(_tp_price), extend=extend.right, color=COLOR_LONG_CLOSE, style=line.style_dashed))
+    algo.tp_lines.push(line.new(bar_index, math.abs(_tp_price), bar_index+1, math.abs(_tp_price), extend=extend.right, color=COLOR_TP_LINE, style=line.style_dashed))
     algo.update_avg_price()
     algo.t.distance := (algo.nof_orders == 1) ? algo.t.distance_0 : algo.t.distance + 0.5
 
@@ -245,6 +248,7 @@ method post_tp(Algo algo, int idx) =>
     _tp_line.delete()
     algo.order_amt /= 2.0
     algo.t.distance -= 0.5
+    algo.bar_used := true
 
 method tp(Algo algo, int idx) =>
     algo.pre_tp(idx)
@@ -279,6 +283,7 @@ method post_TP(Algo algo) =>
     algo.tp_lines.clear()
     algo.order_amt := algo.order_amt_0
     algo.t.distance := algo.t.distance_0
+    algo.bar_used := true
 
 method TP(Algo algo) =>
     algo.pre_TP()
@@ -296,6 +301,7 @@ method check_TP(Algo algo) =>
 method pre_process(Algo algo) =>
     algo.current_price := algo.is_long() ? close : -close
     algo.t.algo_status := algo.status
+    algo.bar_used := false
     algo.trade_hist := na 
     algo.tp_hist := na
     algo.TP_hist := na
