@@ -2,7 +2,7 @@
 // © dfrankmv
 
 //@version=5
-strategy("INF_TRAILING_4", overlay=true, margin_long=100, margin_short=100, process_orders_on_close = true, max_labels_count = 500)
+strategy("INF_TRAILING_5", overlay=true, margin_long=100, margin_short=100, process_orders_on_close = true, max_labels_count = 500)
 
 import dfrankmv/BINANCE/10 as b
 import dfrankmv/Helpers/5 as h
