@@ -4,12 +4,9 @@
 //@version=5
 strategy("INF_TRAILING_5", overlay=true, margin_long=100, margin_short=100, process_orders_on_close = true, max_labels_count = 500)
 
-import dfrankmv/BINANCE/10 as b
-import dfrankmv/Helpers/5 as h
-import dfrankmv/TrailingLib/4 as t
-
-
-
+import dfrankmv/HelpersLib/1 as h
+import dfrankmv/TrailingLib/9 as t
+import dfrankmv/AlgoTpWinLib/2 as a
 
 // ********************************************************************************************************************* INPUT 
 var TAG             = input.string("2024/05/05 14:54 ARB", "TAG")
@@ -20,13 +17,9 @@ var WIN_DIST        = input.float(5.0, "WIN_DIST")
 var TRAILING_DIST   = input.float(2.0, "TRAILING_DISTANCE")
 var ORDER_FACTOR    = input.float(2.0, "ORDER_FACTOR")
 var DIST_INCREMENT  = input.float(0.5, "DIST_INCREMENT")
+var MODE            = input.string("NORMAL", "MODE", ["NORMAL", "REVERSE"])
 var RAW             = input.text_area("2024/05/05 14:54 ARB", "RAW")
 var FROM            = h.parse_raw(RAW, "UTC+2")
-var PRICE_DECS      = b.price_decimals()
-var QTY_DECS        = b.qty_decimals()
-
-
-
 
 // ********************************************************************************************************************* CONSTANTS 
 var SIDE_LONG  = 0
@@ -41,325 +34,51 @@ var STATUS_TTG = 4  // TRAILING TRIGGERED
 var MODE_NORMAL  = 0 // TRAILING MODE NORMAL 
 var MODE_REVERSE = 1 // TRAILING MODE REVERSE 
 
-var COLOR_TRANSPARENT       = #0000ff00
-var COLOR_LONG              = #00ff00
 var COLOR_LONG_OPEN         = color.rgb(22, 212, 181)
 var COLOR_LONG_CLOSE        = color.rgb(89, 13, 124)
 var COLOR_LONG_AVG          = #0ae2ff
 var COLOR_LONG_TRAILING     = color.rgb(0, 255, 0, 63)
-var COLOR_TP_LINE           = #35df7c
 var COLOR_SHORT             = #ff0000
 var COLOR_SHORT_OPEN        = #fd6b6b
 var COLOR_SHORT_CLOSE       = #7a1919 
 var COLOR_SHORT_AVG         = #f09d22
 var COLOR_SHORT_TRAILING    = #ff0000aa
 
-
-
-
-
 // ********************************************************************************************************************* EQUITY
 var cash = INITIAL_CAPITAL
 var equity = INITIAL_CAPITAL
 
-
-
-
-
-// ********************************************************************************************************************* HELPER FUNCTIONS
-round_to_minprice(float price)  => math.ceil(price * math.pow(10, PRICE_DECS)) / math.pow(10, PRICE_DECS)
-round_to_minqty(float qty)      => math.ceil(qty * math.pow(10, QTY_DECS)) / math.pow(10, QTY_DECS)
-
-
-
-
-
-// ********************************************************************************************************************* ALGO TYPE 
-type Algo
-    int     status        = 0
-    int     SIDE          = 0
-    float   ORDER_AMT     = 0.0
-    float   ORDER_QTY     = 0.0
-    float   TP_DIST       = 0.0
-    float   WIN_DIST      = 0.0
-    int     FROM          = 0
-    int     side          = 0
-    float   order_amt     = 0.0
-    float   order_qty     = 0.0
-    float   tp_dist       = 0.0
-    float   win_dist      = 0.0
-    float   total_amt     = 0.0
-    float   total_qty     = 0.0
-    float   win_price     = na 
-    float   avg_price     = na 
-    int     nof_orders    = 0
-    float   order_price   = na 
-    float   win_amt       = 0.0
-    string  bar_action    = ""
-    float[] order_prices  = na 
-    float[] tp_prices     = na
-    line[]  tp_lines      = na
-    float[] qtys          = na
-    float   current_price = close
-    bool    send_orders   = true
-    bool    show_labels   = false 
-    
-    float order_history  = na
-    float tp_history     = na
-    float win_history    = na
-    
-    color COLOR_LONG_ORDER    = #0ee407
-    color COLOR_LONG_TP       = #0b4908
-    color COLOR_LONG_TP_LINE  = #f1acac
-    color COLOR_SHORT_ORDER   = #e00a0a
-    color COLOR_SHORT_TP      = #6d0606
-    color COLOR_SHORT_TP_LINE = #aaf0ac
-
-    int SIDE_LONG  = 0
-    int SIDE_SHORT = 1
-
-    int STATUS_NEW =  0
-    int STATUS_PIP =  1
-    int STATUS_LCK = -1
-
-
-method is_long(Algo algo)               => algo.side == algo.SIDE_LONG
-method is_new(Algo algo)                => algo.status == algo.STATUS_NEW
-method is_pip(Algo algo)                => algo.status == algo.STATUS_PIP
-method is_locked(Algo algo)             => algo.status == algo.STATUS_LCK
-method is_not_locked(Algo algo)         => algo.status != algo.STATUS_LCK
-method is_bar_used(Algo algo)           => algo.bar_action != ""
-method is_bar_available(Algo algo)      => algo.bar_action == ""
-method unrealized(Algo algo, int idx)   => math.abs(algo.qtys.get(idx)) * (algo.current_price - algo.order_prices.get(idx))
-method unrealized(Algo algo)            => na(algo.avg_price) ? 0.0 : math.abs(algo.total_qty) * (algo.current_price - algo.avg_price)
-method tp_reached(Algo algo, int idx)   => algo.current_price >= algo.tp_prices.get(idx)
-method win_reached(Algo algo)           => algo.current_price >= algo.win_price
-
-method order_alert(Algo algo) =>
-    _pair   = str.replace(syminfo.ticker, ".P", "")
-    _side   = algo.is_long() ? "LONG" : "SHORT"
-    _action = algo.is_long() ? "BUY" : "SELL"
-    _msg    = _pair + "_" + _side + " " + _action + " " + str.tostring(algo.order_qty)      // BTCUSDT_LONG BUY 0.0025
-    if algo.show_labels
-        _label_dir = algo.is_long() ? label.style_label_up : label.style_label_down
-        _color     = algo.is_long() ? algo.COLOR_LONG_ORDER : algo.COLOR_SHORT_ORDER
-        label.new(bar_index, close, _msg, style=_label_dir, color=_color)
-    alert(_msg, alert.freq_all)
-
-method tp_alert(Algo algo, float qty) =>
-    _pair   = str.replace(syminfo.ticker, ".P", "")
-    _side   = algo.is_long() ? "LONG" : "SHORT"
-    _action = algo.is_long() ? "SELL" : "BUY"
-    _msg    = _pair + "_" + _side + " " + _action + " " + str.tostring(qty)      // BTCUSDT_LONG SELL 0.0025
-    if algo.show_labels 
-        _label_dir = algo.is_long() ? label.style_label_down : label.style_label_up
-        _color     = algo.is_long() ? algo.COLOR_LONG_TP : algo.COLOR_SHORT_TP
-        label.new(bar_index, close, _msg, style=_label_dir, color=_color)
-    alert(_msg, alert.freq_all)
-
-method win_alert(Algo algo) =>
-    _pair   = str.replace(syminfo.ticker, ".P", "")
-    _side   = algo.is_long() ? "LONG" : "SHORT"
-    _action = "CLOSE"
-    _msg    = _pair + "_" + _side + " " + _action       // BTCUSDT_LONG CLOSE
-    if algo.show_labels
-        _label_dir  = algo.is_long() ? label.style_label_down : label.style_label_up
-        _color      = algo.is_long() ? COLOR_LONG_CLOSE : COLOR_SHORT_CLOSE
-        label.new(bar_index, close, _msg, style=_label_dir, color=_color)
-    alert(_msg, alert.freq_all)
-
-method update_avg_price(Algo algo) =>
-    algo.avg_price := algo.nof_orders == 0 ? na : round_to_minprice(algo.total_amt / algo.total_qty)
-    algo.win_price := algo.nof_orders == 0 ? na : round_to_minprice(h.offset(algo.avg_price, algo.win_dist))
-
-method send_open_order(Algo algo, string trade_id, float qty) =>
-    _dir = algo.is_long() ? strategy.long : strategy.short
-    if algo.send_orders
-        strategy.order(trade_id, _dir, math.abs(qty))
-
-method send_tp_order(Algo algo, string trade_id, float qty) =>
-    _dir = algo.is_long() ? strategy.short : strategy.long
-    if algo.send_orders
-        strategy.order(trade_id, _dir, math.abs(qty))
-
-method draw_tp_line(Algo algo, tp_price) =>
-    _tp = math.abs(tp_price)
-    _c  = algo.is_long() ? algo.COLOR_LONG_TP_LINE : algo.COLOR_SHORT_TP_LINE
-    line.new(bar_index, _tp, bar_index + 1, _tp, color=_c, extend=extend.right, style=line.style_dashed)
-
-method trade(Algo algo, float amt=0.0, float qty=0.0, trade_id="o") =>
-    algo.nof_orders += 1
-    if amt > 0.0
-        algo.order_amt := amt
-        algo.order_qty := round_to_minqty(algo.order_amt / algo.current_price) 
-    if qty > 0.0
-        algo.order_amt := qty * algo.current_price
-        algo.order_qty := round_to_minqty(qty)
-    
-    algo.total_amt += algo.order_amt
-    algo.total_qty += algo.order_qty 
-    algo.update_avg_price()
-    
-    algo.qtys.push(algo.order_qty)
-    algo.order_prices.push(algo.current_price)
-
-    tp_price = round_to_minprice(h.offset(algo.current_price, algo.tp_dist))
-    algo.tp_prices.push(tp_price)
-    algo.tp_lines.push(algo.draw_tp_line(tp_price))
-    
-    algo.order_history := close 
-    algo.order_alert()
-    if algo.send_orders
-        algo.send_open_order(trade_id, algo.order_qty)
-
-method tp(Algo algo, int idx, string trade_id) =>
-    algo.bar_action := "tp"
-    _qty = algo.qtys.get(idx)
-    algo.tp_history := close
-    algo.nof_orders -= 1
-    if algo.nof_orders == 0
-        algo.win_amt += algo.unrealized()   // NO idx BECAUSE THE PROFIT IS FROM THE AVG
-        algo.total_qty := 0.0
-        algo.total_amt := 0.0
-    else 
-        algo.total_qty -= _qty
-        algo.total_amt -= _qty * algo.current_price
-
-    algo.update_avg_price()
-    algo.order_prices.remove(idx)
-    algo.qtys.remove(idx)
-    algo.tp_prices.remove(idx)
-    _tp_line = algo.tp_lines.get(idx)
-    algo.tp_lines.remove(idx)
-    _tp_line.delete()
-
-    algo.tp_alert(_qty)
-    if algo.send_orders
-        algo.send_tp_order(trade_id, _qty)
-
-method win_tp(Algo algo) =>
-    algo.bar_action := "win"
-    algo.win_history := close 
-    algo.win_amt := algo.unrealized()
-    algo.nof_orders := 0
-    algo.total_qty := 0.0
-    algo.total_amt := 0.0
-    algo.update_avg_price()
-    algo.order_prices.clear()
-    algo.qtys.clear()
-    algo.tp_prices.clear()
-    for tp_line in algo.tp_lines
-        tp_line.delete()
-    algo.tp_lines.clear()
-    algo.order_amt := algo.ORDER_AMT
-    algo.order_qty := algo.ORDER_QTY
-    algo.tp_dist   := algo.TP_DIST
-    algo.win_dist  := algo.WIN_DIST
-    algo.win_alert()
-    if algo.send_orders
-        strategy.close_all()
-
-method check_tp(Algo algo) =>
-    if array.size(algo.tp_prices) > 0
-        for i = array.size(algo.tp_prices) - 1 to 0
-            if algo.tp_reached(i)
-                algo.tp(i, "x" + str.tostring(algo.nof_orders))
-
-method check_win(Algo algo) =>
-    if algo.win_reached()
-        algo.win_tp()
-
-method pre_process(Algo algo) =>
-    algo.current_price := algo.is_long() ? close : -close
-    algo.bar_action    := ""
-    algo.order_history := na 
-    algo.tp_history    := na
-    algo.win_history   := na
-    algo.check_tp()
-    if algo.is_bar_available()
-        algo.check_win()
-
-create(int status, int side, float order_amt, float order_qty, float tp_dist, float win_dist, int from) =>
-    Algo algo = Algo.new(status, side, order_amt, order_qty, tp_dist, win_dist, from)
-    algo.order_amt    := algo.order_amt
-    algo.order_qty    := algo.order_qty
-    algo.tp_dist      := algo.is_long() ? tp_dist  : -tp_dist
-    algo.win_dist     := algo.is_long() ? win_dist : -win_dist
-    algo.order_prices := array.new<float>(0)
-    algo.tp_prices    := array.new<float>(0)
-    algo.qtys         := array.new<float>(0)
-    algo.tp_lines     := array.new<line>(0)
-    algo
-
-
-
-
-
-
-trade_signal(Algo algo, t.Trailing tr) => 
+trade_signal(a.Algo algo, t.Trailing tr) => 
     ret = true 
     ret := ret and algo.is_not_locked()
     ret := ret and algo.is_bar_available()
     ret := ret and tr.trigger_crossed()
     ret
 
-pre_trade(Algo algo) =>
-    algo.order_amt := algo.nof_orders == 0 ? algo.ORDER_AMT : algo.order_amt * 2.0
+pre_trade(a.Algo algo) =>
+    algo.order_amt := algo.nof_orders == 0 ? algo.ORDER_AMT : algo.order_amt * ORDER_FACTOR
 
-post_trade(Algo algo, t.Trailing tr) =>
-    tr.distance := (algo.nof_orders == 1) ? tr.DISTANCE : tr.distance + 0.5
+post_trade(a.Algo algo, t.Trailing tr) =>
+    tr.distance := (algo.nof_orders <= 1) ? tr.DISTANCE : tr.add_distance(DIST_INCREMENT)
 
-
-
-
-
-
-// method post_tp(Algo algo, int idx) =>
-//     algo.update_avg_price()
-//     algo.open_prices.remove(idx)
-//     algo.qtys.remove(idx)
-//     algo.tp_prices.remove(idx)
-//     _tp_line = algo.tp_lines.get(idx)
-//     algo.tp_lines.remove(idx)
-//     _tp_line.delete()
-//     algo.order_amt /= 2.0
-//     algo.t.distance -= 0.5
-//     algo.bar_used := true
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-process(Algo algo, t.Trailing tr) =>
+process(a.Algo algo, t.Trailing tr) =>
     tr.run()
     algo.pre_process()
     if algo.is_bar_used()
         algo.order_amt /= ORDER_FACTOR
-        tr.distance -= DIST_INCREMENT
+        tr.decrease_distance(DIST_INCREMENT)
     if trade_signal(algo, tr)
         pre_trade(algo)
         algo.trade(amt=algo.order_amt, trade_id="o" + str.tostring(algo.nof_orders + 1))
         post_trade(algo, tr)
     0
 
-
-
-
-
-
 // ********************************************************************************************************************* PROCESS
+var _MODE = MODE == "NORMAL" ? MODE_NORMAL : MODE_REVERSE
 
-var t.Trailing tr = t.create(SIDE_LONG, TRAILING_DIST, MODE_NORMAL)
-var Algo long  = create(STATUS_NEW, SIDE_LONG, ORDER_AMT, 0.0, TP_DIST, WIN_DIST, FROM)
+var t.Trailing tr = t.create(SIDE_LONG, TRAILING_DIST, _MODE)
+var a.Algo long  = a.create(STATUS_NEW, SIDE_LONG, ORDER_AMT, 0.0, TP_DIST, WIN_DIST, FROM)
+
 
 if FROM <= time("")
     process(long, tr)
@@ -368,16 +87,15 @@ if long.win_amt > 0.0
     cash += long.win_amt
     long.win_amt := 0.0
 
-
-
 equity := cash + long.unrealized()
+
 
 plot(bar_index, "bar_index", display=display.data_window)
 
 plot(display=display.status_line, color=color.yellow, series=equity, title="equity")
 plot(display=display.status_line, color=color.orange, series=strategy.equity, title="strategy.equity")
-plot(display=display.status_line, color=color.red, series=INITIAL_CAPITAL - ta.min(equity), title="min_equity")
-plot(display=display.status_line, color=color.green, series=ta.max(equity) - INITIAL_CAPITAL, title="max_equity")
+plot(display=display.status_line, color=color.red,    series=INITIAL_CAPITAL - ta.min(equity), title="min_equity")
+plot(display=display.status_line, color=color.green,  series=ta.max(equity) - INITIAL_CAPITAL, title="max_equity")
 
 plot(display=display.data_window, color=color.green, series=long.status, title="status")
 plot(display=display.data_window, color=color.green, series=long.nof_orders, title="nof_orders")
@@ -389,8 +107,8 @@ plot(display=display.data_window, color=color.green, series=tr.trigger_price, ti
 plot(display=display.data_window, color=color.green, series=long.win_price, title="win_price")
 plot(display=display.data_window, color=color.green, series=long.avg_price, title="avg_price")
 
-plot(display=display.pane, color=COLOR_LONG_TRAILING,   style=plot.style_linebr, series=tr.trigger_price, title="long.trigger_price")
-plot(display=display.pane, color=COLOR_LONG_AVG,        style=plot.style_linebr, series=long.avg_price, title="long.avg_price", linewidth=2)
+plot(display=display.pane, color=tr.COLOR_LONG_TRAILING, style=plot.style_linebr, series=tr.trigger_price, title="trigger_price")
+plot(display=display.pane, color=COLOR_LONG_AVG, style=plot.style_linebr, series=long.avg_price, title="avg_price", linewidth=2)
 
 plotshape(location=location.absolute, size=size.small, display=display.pane, offset=0, style=shape.labelup,   color=COLOR_LONG_OPEN,   series=long.order_history)
 plotshape(location=location.absolute, size=size.small, display=display.pane, offset=0, style=shape.labeldown, color=COLOR_LONG_CLOSE,  series=long.tp_history, text="🥳")
