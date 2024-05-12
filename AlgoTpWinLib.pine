@@ -1,0 +1,232 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © dfrankmv
+
+//@version=5
+
+import dfrankmv/HelpersLib/1 as h
+
+library("AlgoTpWinLib")
+
+// ********************************************************************************************************************* ALGO TYPE 
+export type Algo
+    int     status        = 0
+    int     SIDE          = 0
+    float   ORDER_AMT     = 0.0
+    float   ORDER_QTY     = 0.0
+    float   TP_DIST       = 0.0
+    float   WIN_DIST      = 0.0
+    int     FROM          = 0
+    int     side          = 0
+    float   order_amt     = 0.0
+    float   order_qty     = 0.0
+    float   tp_dist       = 0.0
+    float   win_dist      = 0.0
+    float   total_amt     = 0.0
+    float   total_qty     = 0.0
+    float   win_price     = na 
+    float   avg_price     = na 
+    int     nof_orders    = 0
+    float   order_price   = na 
+    float   win_amt       = 0.0
+    string  bar_action    = ""
+    float[] order_prices  = na 
+    float[] tp_prices     = na
+    line[]  tp_lines      = na
+    float[] qtys          = na
+    float   current_price = close
+    bool    send_orders   = true
+    bool    show_labels   = false 
+    
+    float order_history  = na
+    float tp_history     = na
+    float win_history    = na
+    
+    color COLOR_LONG_ORDER    = #0ee407
+    color COLOR_LONG_TP       = #0b4908
+    color COLOR_LONG_TP_LINE  = #f1acac
+    color COLOR_SHORT_ORDER   = #e00a0a
+    color COLOR_SHORT_TP      = #6d0606
+    color COLOR_SHORT_TP_LINE = #aaf0ac
+
+    int SIDE_LONG  = 0
+    int SIDE_SHORT = 1
+
+    int STATUS_NEW =  0
+    int STATUS_PIP =  1
+    int STATUS_LCK = -1
+
+
+export method is_long(Algo algo)               => algo.side == algo.SIDE_LONG
+export method is_new(Algo algo)                => algo.status == algo.STATUS_NEW
+export method is_pip(Algo algo)                => algo.status == algo.STATUS_PIP
+export method is_locked(Algo algo)             => algo.status == algo.STATUS_LCK
+export method is_not_locked(Algo algo)         => algo.status != algo.STATUS_LCK
+export method is_bar_used(Algo algo)           => algo.bar_action != ""
+export method is_bar_available(Algo algo)      => algo.bar_action == ""
+export method tp_reached(Algo algo, int idx)   => algo.current_price >= algo.tp_prices.get(idx)
+export method win_reached(Algo algo)           => algo.current_price >= algo.win_price
+
+export method unrealized(Algo algo, int idx) => 
+    math.abs(algo.qtys.get(idx)) * (algo.current_price - algo.order_prices.get(idx))
+
+export method unrealized(Algo algo) => 
+    if na(algo.avg_price)
+        0.0 
+    else 
+        math.abs(algo.total_qty) * (algo.current_price - algo.avg_price)
+
+method order_alert(Algo algo) =>
+    _pair   = str.replace(syminfo.ticker, ".P", "")
+    _side   = algo.is_long() ? "LONG" : "SHORT"
+    _action = algo.is_long() ? "BUY" : "SELL"
+    _msg    = _pair + "_" + _side + " " + _action + " " + str.tostring(algo.order_qty)      // BTCUSDT_LONG BUY 0.0025
+    if algo.show_labels
+        _label_dir = algo.is_long() ? label.style_label_up : label.style_label_down
+        _color     = algo.is_long() ? algo.COLOR_LONG_ORDER : algo.COLOR_SHORT_ORDER
+        label.new(bar_index, close, _msg, style=_label_dir, color=_color)
+    alert(_msg, alert.freq_all)
+
+method tp_alert(Algo algo, float qty) =>
+    _pair   = str.replace(syminfo.ticker, ".P", "")
+    _side   = algo.is_long() ? "LONG" : "SHORT"
+    _action = algo.is_long() ? "SELL" : "BUY"
+    _msg    = _pair + "_" + _side + " " + _action + " " + str.tostring(qty)      // BTCUSDT_LONG SELL 0.0025
+    if algo.show_labels 
+        _label_dir = algo.is_long() ? label.style_label_down : label.style_label_up
+        _color     = algo.is_long() ? algo.COLOR_LONG_TP : algo.COLOR_SHORT_TP
+        label.new(bar_index, close, _msg, style=_label_dir, color=_color)
+    alert(_msg, alert.freq_all)
+
+method win_alert(Algo algo) =>
+    _pair   = str.replace(syminfo.ticker, ".P", "")
+    _side   = algo.is_long() ? "LONG" : "SHORT"
+    _action = "CLOSE"
+    _msg    = _pair + "_" + _side + " " + _action       // BTCUSDT_LONG CLOSE
+    if algo.show_labels
+        _label_dir  = algo.is_long() ? label.style_label_down : label.style_label_up
+        _color      = algo.is_long() ? algo.COLOR_LONG_TP : algo.COLOR_SHORT_TP
+        label.new(bar_index, close, _msg, style=_label_dir, color=_color)
+    alert(_msg, alert.freq_all)
+
+method update_avg_price(Algo algo) =>
+    algo.avg_price := algo.nof_orders == 0 ? na : h.round_to_minprice(algo.total_amt / algo.total_qty)
+    algo.win_price := algo.nof_orders == 0 ? na : h.round_to_minprice(h.offset(algo.avg_price, algo.win_dist))
+
+method send_open_order(Algo algo, string trade_id, float qty) =>
+    _dir = algo.is_long() ? strategy.long : strategy.short
+    if algo.send_orders
+        strategy.order(trade_id, _dir, math.abs(qty))
+
+method send_tp_order(Algo algo, string trade_id, float qty) =>
+    _dir = algo.is_long() ? strategy.short : strategy.long
+    if algo.send_orders
+        strategy.order(trade_id, _dir, math.abs(qty))
+
+method draw_tp_line(Algo algo, tp_price) =>
+    _tp = math.abs(tp_price)
+    _c  = algo.is_long() ? algo.COLOR_LONG_TP_LINE : algo.COLOR_SHORT_TP_LINE
+    line.new(bar_index, _tp, bar_index + 1, _tp, color=_c, extend=extend.right, style=line.style_dashed)
+
+export method trade(Algo algo, float amt=0.0, float qty=0.0, string trade_id="o") =>
+    algo.nof_orders += 1
+    if amt > 0.0
+        algo.order_qty := h.round_to_minqty(amt / algo.current_price) 
+        algo.order_amt := algo.order_qty * algo.current_price
+    if qty > 0.0
+        algo.order_amt := qty * algo.current_price
+        algo.order_qty := h.round_to_minqty(qty)
+    
+    algo.total_amt += algo.order_amt
+    algo.total_qty += algo.order_qty 
+    algo.update_avg_price()
+    
+    algo.qtys.push(algo.order_qty)
+    algo.order_prices.push(algo.current_price)
+
+    tp_price = h.round_to_minprice(h.offset(algo.current_price, algo.tp_dist))
+    algo.tp_prices.push(tp_price)
+    algo.tp_lines.push(algo.draw_tp_line(tp_price))
+    
+    algo.order_history := close 
+    algo.order_alert()
+    if algo.send_orders
+        algo.send_open_order(trade_id, algo.order_qty)
+
+method tp(Algo algo, int idx, string trade_id) =>
+    algo.bar_action := "tp"
+    _qty = algo.qtys.get(idx)
+    algo.tp_history := close
+    algo.nof_orders -= 1
+    if algo.nof_orders == 0
+        algo.win_amt += algo.unrealized()   // NO idx BECAUSE THE PROFIT IS FROM THE AVG
+        algo.total_qty := 0.0
+        algo.total_amt := 0.0
+    else 
+        algo.total_qty -= _qty
+        algo.total_amt -= _qty * algo.current_price
+
+    algo.update_avg_price()
+    algo.order_prices.remove(idx)
+    algo.qtys.remove(idx)
+    algo.tp_prices.remove(idx)
+    _tp_line = algo.tp_lines.get(idx)
+    algo.tp_lines.remove(idx)
+    _tp_line.delete()
+
+    algo.tp_alert(_qty)
+    if algo.send_orders
+        algo.send_tp_order(trade_id, _qty)
+
+method win_tp(Algo algo) =>
+    algo.bar_action := "win"
+    algo.win_history := close 
+    algo.win_amt := algo.unrealized()
+    algo.nof_orders := 0
+    algo.total_qty := 0.0
+    algo.total_amt := 0.0
+    algo.update_avg_price()
+    algo.order_prices.clear()
+    algo.qtys.clear()
+    algo.tp_prices.clear()
+    for tp_line in algo.tp_lines
+        tp_line.delete()
+    algo.tp_lines.clear()
+    algo.order_amt := algo.ORDER_AMT
+    algo.order_qty := algo.ORDER_QTY
+    algo.tp_dist   := algo.TP_DIST
+    algo.win_dist  := algo.WIN_DIST
+    algo.win_alert()
+    if algo.send_orders
+        strategy.close_all()
+
+method check_tp(Algo algo) =>
+    if array.size(algo.tp_prices) > 0
+        for i = array.size(algo.tp_prices) - 1 to 0
+            if algo.tp_reached(i)
+                algo.tp(i, "x" + str.tostring(algo.nof_orders))
+
+method check_win(Algo algo) =>
+    if algo.win_reached()
+        algo.win_tp()
+
+export method pre_process(Algo algo) =>
+    algo.current_price := algo.is_long() ? close : -close
+    algo.bar_action    := ""
+    algo.order_history := na 
+    algo.tp_history    := na
+    algo.win_history   := na
+    algo.check_tp()
+    if algo.is_bar_available()
+        algo.check_win()
+
+export create(int status, int side, float order_amt, float order_qty, float tp_dist, float win_dist, int from) =>
+    Algo algo = Algo.new(status, side, order_amt, order_qty, tp_dist, win_dist, from)
+    algo.order_amt    := algo.order_amt
+    algo.order_qty    := algo.order_qty
+    algo.tp_dist      := algo.is_long() ? tp_dist  : -tp_dist
+    algo.win_dist     := algo.is_long() ? win_dist : -win_dist
+    algo.order_prices := array.new<float>(0)
+    algo.tp_prices    := array.new<float>(0)
+    algo.qtys         := array.new<float>(0)
+    algo.tp_lines     := array.new<line>(0)
+    algo

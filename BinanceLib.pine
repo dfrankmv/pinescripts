@@ -1,0 +1,647 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © dfrankmv
+
+//@version=5
+ 
+// @description BINANCE exchange info
+library("BinanceLib")
+
+get_decimals(string symbol) =>
+    int price_decimals = 10
+    int qty_decimals = 10
+    if symbol == "1000FLOKIUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "1000LUNCUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "1000PEPEUSDT"
+        price_decimals := 7
+        qty_decimals := 0
+    if symbol == "1000SHIBUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "1000XECUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "1INCHUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "AAVEUSDT"
+        price_decimals := 2
+        qty_decimals := 1
+    if symbol == "ACHUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ADAUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "AGIXUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "AGLDUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "ALGOUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "ALICEUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "ALPHAUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "AMBUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ANKRUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ANTUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "APEUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "API3USDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "APTUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "ARBUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "ARKMUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "ARPAUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ARUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "ASTRUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ATAUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "ATOMUSDT"
+        price_decimals := 3
+        qty_decimals := 2
+    if symbol == "AUDIOUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "AVAXUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "AXSUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "BAKEUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "BALUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "BANDUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "BATUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "BCHUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "BELUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "BLUEBIRDUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "BLURUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "BLZUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "BNBUSDT"
+        price_decimals := 2
+        qty_decimals := 2
+    if symbol == "BNTUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "BNXUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "BTCDOMUSDT"
+        price_decimals := 1
+        qty_decimals := 3
+    if symbol == "BTCSTUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "BTCUSDT"
+        price_decimals := 1
+        qty_decimals := 3
+    if symbol == "BTCUSDT_230929"
+        price_decimals := 1
+        qty_decimals := 3
+    if symbol == "BTSUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "C98USDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "CELOUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "CELRUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "CFXUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "CHRUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "CHZUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "CKBUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "COCOSUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "COMBOUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "COMPUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "COTIUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "CRVUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "CTKUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "CTSIUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "CVCUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "CVXUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "DARUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "DASHUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "DEFIUSDT"
+        price_decimals := 1
+        qty_decimals := 3
+    if symbol == "DENTUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "DGBUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "DODOXUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "DOGEUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "DOTUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "DUSKUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "DYDXUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "EDUUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "EGLDUSDT"
+        price_decimals := 2
+        qty_decimals := 1
+    if symbol == "ENJUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "ENSUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "EOSUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "ETCUSDT"
+        price_decimals := 3
+        qty_decimals := 2
+    if symbol == "ETHUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "ETHUSDT_230929"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "FETUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "FILUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "FLMUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "FLOWUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "FOOTBALLUSDT"
+        price_decimals := 2
+        qty_decimals := 2
+    if symbol == "FTMUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "FTTUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "FXSUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "GALAUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "GALUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "GMTUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "GMXUSDT"
+        price_decimals := 2
+        qty_decimals := 2
+    if symbol == "GRTUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "GTCUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "HBARUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "HFTUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "HIGHUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "HNTUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "HOOKUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "HOTUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "ICPUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "ICXUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "IDEXUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "IDUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "IMXUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "INJUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "IOSTUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "IOTAUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "IOTXUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "JASMYUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "JOEUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "KAVAUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "KEYUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "KLAYUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "KNCUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "KSMUSDT"
+        price_decimals := 2
+        qty_decimals := 1
+    if symbol == "LDOUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "LEVERUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "LINAUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "LINKUSDT"
+        price_decimals := 3
+        qty_decimals := 2
+    if symbol == "LITUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "LPTUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "LQTYUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "LRCUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "LTCUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "LUNA2USDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "MAGICUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "MANAUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "MASKUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "MATICUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "MAVUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "MDTUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "MINAUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "MKRUSDT"
+        price_decimals := 1
+        qty_decimals := 3
+    if symbol == "MTLUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "NEARUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "NEOUSDT"
+        price_decimals := 3
+        qty_decimals := 2
+    if symbol == "NKNUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "NMRUSDT"
+        price_decimals := 2
+        qty_decimals := 1
+    if symbol == "OCEANUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "OGNUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "OMGUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "ONEUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ONTUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "OPUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "OXTUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "PENDLEUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "PEOPLEUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "PERPUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "PHBUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "QNTUSDT"
+        price_decimals := 2
+        qty_decimals := 1
+    if symbol == "QTUMUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "RADUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "RAYUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "RDNTUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "REEFUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "RENUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "RLCUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "RNDRUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "ROSEUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "RSRUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "RUNEUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "RVNUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "SANDUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "SCUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "SEIUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "SFPUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "SKLUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "SNXUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "SOLUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "SPELLUSDT"
+        price_decimals := 7
+        qty_decimals := 0
+    if symbol == "SRMUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "SSVUSDT"
+        price_decimals := 2
+        qty_decimals := 2
+    if symbol == "STGUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "STMXUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "STORJUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "STXUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "SUIUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "SUSHIUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "SXPUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "THETAUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "TLMUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "TOMOUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "TRBUSDT"
+        price_decimals := 2
+        qty_decimals := 1
+    if symbol == "TRUUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "TRXUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "TUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "UMAUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "UNFIUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "UNIUSDT"
+        price_decimals := 3
+        qty_decimals := 0
+    if symbol == "USDCUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "VETUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "WAVESUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "WLDUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "WOOUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "XEMUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "XLMUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "XMRUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "XRPUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    if symbol == "XTZUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "XVGUSDT"
+        price_decimals := 6
+        qty_decimals := 0
+    if symbol == "XVSUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "YFIUSDT"
+        price_decimals := 0
+        qty_decimals := 3
+    if symbol == "YGGUSDT"
+        price_decimals := 4
+        qty_decimals := 0
+    if symbol == "ZECUSDT"
+        price_decimals := 2
+        qty_decimals := 3
+    if symbol == "ZENUSDT"
+        price_decimals := 3
+        qty_decimals := 1
+    if symbol == "ZILUSDT"
+        price_decimals := 5
+        qty_decimals := 0
+    if symbol == "ZRXUSDT"
+        price_decimals := 4
+        qty_decimals := 1
+    [price_decimals, qty_decimals]
+
+export price_decimals() => 
+    [_p, _q] = get_decimals(str.replace(syminfo.ticker, ".P", ""))
+    _p
+
+export qty_decimals() => 
+    [_p, _q] = get_decimals(str.replace(syminfo.ticker, ".P", ""))
+    _q

@@ -1,0 +1,64 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © dfrankmv
+
+//@version=5
+
+import dfrankmv/BinanceLib/2 as b
+
+// @description TODO: add library description here
+library("HelpersLib")
+
+var PRICE_DECS = b.price_decimals()
+var QTY_DECS   = b.qty_decimals()
+
+// ------------------------------------------------------------------------------------------------------------------ //
+// HELPER FUNCTIONS
+// ------------------------------------------------------------------------------------------------------------------ //
+// @function Creates a label for debug purposes
+export dd(string msg, int bar_index_from, int bar_index_to) =>
+    if (bar_index_from <= bar_index) and (bar_index <= bar_index_to)
+        label.new(bar_index, high, str.tostring(msg), textcolor=color.white)
+
+// @function Creates a label for debug purposes
+export dd(float msg, int bar_index_from, int bar_index_to) =>
+    if (bar_index_from <= bar_index) and (bar_index <= bar_index_to)
+        label.new(bar_index, high, str.tostring(msg), textcolor=color.white)
+
+// @function Creates a label for debug purposes
+export dd(bool msg, int bar_index_from, int bar_index_to) =>
+    if (bar_index_from <= bar_index) and (bar_index <= bar_index_to)
+        label.new(bar_index, high, str.tostring(msg), textcolor=color.white)
+
+// @function Returns a price offset 
+export offset(float base_price, float offset_perc) => 
+    (1.0 + offset_perc/100.0) * base_price
+
+// @function Converts a datetime "YYYY/MM/DD hh:mm" to int format
+// @param datetime_raw A datetime string "YYYY/MM/DD hh:mm"
+// @returns Time in int 
+export parse_date_time(string datetime_raw, string timezone="UTC+2") =>                                                 // PARSE_DATE_TIME
+    _temp = str.split(datetime_raw, " ")
+    date_arr = str.split(_temp.get(0), "/")
+    time_arr = str.split(_temp.get(1), ":")
+    _year    = math.floor( str.tonumber( array.get(date_arr, 0) ) )
+    _month   = math.floor( str.tonumber( array.get(date_arr, 1) ) ) 
+    _day     = math.floor( str.tonumber( array.get(date_arr, 2) ) )
+    _hour    = math.floor( str.tonumber( array.get(time_arr, 0) ) )
+    _minute  = math.floor( str.tonumber( array.get(time_arr, 1) ) )
+    timestamp(timezone, _year, _month, _day, _hour, _minute, 0)
+
+// @function Parses a text_area input in format like "2024/05/22 15:54 BTC"
+// @param raw text_area input
+// @returns Time in int 
+export parse_raw(string raw, string timezone="UTC+2") =>
+    _from = 0
+    lines = str.split(raw, "\n")
+    for _line in lines
+        params = str.split(_line, " ") // ["2023/01/01", "00:00", "BTC"]
+        pair   = params.get(2) + "USDT"
+        if str.contains(syminfo.tickerid, pair) // syminfo.tickerid <- "BTCUSDT.P"
+            _from := parse_date_time(params.get(0) + " " + params.get(1), timezone)
+    _from   // RETURN _from
+
+export round_to_minprice(float price) => math.ceil(price * math.pow(10, PRICE_DECS)) / math.pow(10, PRICE_DECS)
+export round_to_minqty(float qty)     => math.ceil(qty * math.pow(10, QTY_DECS)) / math.pow(10, QTY_DECS)

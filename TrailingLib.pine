@@ -1,0 +1,79 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © dfrankmv
+
+//@version=5
+
+import dfrankmv/Helpers/5 as h
+
+library("TrailingLib")
+
+export type Trailing
+    int     status          = 0
+    int     SIDE            = 0
+    int     MODE            = 0
+    float   DISTANCE        = 0.0
+    int     side            = 0
+    int     mode            = 0
+    float   distance        = 0.0
+    float   edge_price      = na
+    float   trigger_price   = na
+
+    color COLOR_LONG_TRAILING = #00ff005e
+    color COLOR_SHORT_TRAILING = #ff00005e
+	
+	int STATUS_NEW       = 0
+	int STATUS_TRAILING  = 1
+	int STATUS_TRIGGERED = 2
+
+    int SIDE_LONG  = 0
+    int SIDE_SHORT = 1
+
+    int MODE_NORMAL  = 0
+    int MODE_REVERSE = 1
+
+export method is_long(Trailing t)      => t.side == t.SIDE_LONG
+export method is_short(Trailing t)     => t.side == t.SIDE_SHORT
+export method is_normal(Trailing t)    => t.mode == t.MODE_NORMAL
+export method is_reverse(Trailing t)   => t.mode == t.MODE_REVERSE
+export method is_new(Trailing t)       => t.status == t.STATUS_NEW
+export method is_trailing(Trailing t)  => t.status == t.STATUS_TRAILING
+export method is_triggered(Trailing t) => t.status == t.STATUS_TRIGGERED
+export method is_edge_low(Trailing t)  => (t.is_long() and t.is_normal()) or (t.is_short() and t.is_reverse())
+export method is_edge_high(Trailing t) => (t.is_long() and t.is_reverse()) or (t.is_short() and t.is_normal())
+export method hi_lo(Trailing t)        => t.is_edge_low() ? low : high
+export method edge_crossed(Trailing t) => t.is_edge_low() ? low < t.edge_price : high > t.edge_price
+
+export method trigger_crossed(Trailing t) => 
+    if t.is_edge_low() 
+        close >= t.trigger_price 
+    else 
+        close <= t.trigger_price
+
+export method update_trigger_price(Trailing t) => 
+    if t.is_triggered()
+        t.trigger_price := na
+        t.edge_price := na
+    else if t.is_new() or t.edge_crossed()
+        t.edge_price := t.hi_lo()
+        t.trigger_price := h.offset(t.edge_price, t.distance)
+
+export method add_distance(Trailing t, float dist) =>
+    t.distance +=  t.is_edge_low() ? dist : -dist
+
+export method decrease_distance(Trailing t, float dist) =>
+    t.distance -= t.is_edge_low() ? dist : -dist
+
+export method run(Trailing t) =>
+    t.update_trigger_price()
+    switch  
+        t.is_new()          => t.status := t.STATUS_TRAILING
+        t.is_triggered()    => t.status := t.STATUS_NEW
+        t.trigger_crossed() => t.status := t.STATUS_TRIGGERED
+
+export create(int side, float distance, int mode) =>
+    Trailing t = Trailing.new(0, side, mode, distance)
+    t.side     := t.SIDE
+    t.mode     := t.MODE 
+    t.DISTANCE := t.is_edge_low() ? t.DISTANCE : -t.DISTANCE
+    t.distance := t.DISTANCE
+    t
