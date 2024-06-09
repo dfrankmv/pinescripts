@@ -1,0 +1,121 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © dfrankmv
+
+//@version=5
+strategy("TCyD_v3", overlay=true, margin_long=5, margin_short=5, process_orders_on_close=true, initial_capital=1000.0, commission_value=0.02, max_labels_count = 500)
+
+import dfrankmv/BinanceLib/6 as b
+import dfrankmv/HelpersLib/12 as h
+import dfrankmv/TrailingLib/23 as t
+import dfrankmv/CyDLib/14 as c
+
+var TAG = input.string("", "TAG") 
+var RAW = input.text_area("2023/05/26 00:00 NEAR 🡙L ⭧2 ⭨2 +1 🟉5 $12 #5 x1 -0.02", "RAW")
+
+var DIR_LONG = 1
+var DIR_SHORT = -1
+
+var string direction_str          = h.get_param_from_raw(RAW, "🡙", "L")
+var float  trailing_distance_up   = h.get_float_from_raw(RAW, "⭧", 2.0)
+var float  trailing_distance_down = h.get_float_from_raw(RAW, "⭨", 2.0)
+var float  tp_distance            = h.get_float_from_raw(RAW, "+", 1.0)
+var float  win_distance           = h.get_float_from_raw(RAW, "🟉", 5.0)
+var float  order_amount_base      = h.get_float_from_raw(RAW, "$", 12.0)
+var float  martingale_after_n_tp  = h.get_float_from_raw(RAW, "#", 5)
+var float  martingale_factor      = h.get_float_from_raw(RAW, "x", 2)
+var float  fee                    = h.get_float_from_raw(RAW, "-", 0.02)
+var int    from                   = h.get_time_from_raw(RAW, "UTC+2")
+
+var float  QTY_BASE  = b.round_to_minqty(order_amount_base / close)
+var int    direction = direction_str == "L" ? DIR_LONG : DIR_SHORT 
+var float  qty       = QTY_BASE
+var string symbol    = str.replace(syminfo.ticker, ".P", "")
+
+is_long() => direction == DIR_LONG 
+is_short() => direction == DIR_SHORT 
+
+var trl = t.create(t.DIR_ALTERNATE(), t.EDGE_MODE_HL(), na, trailing_distance_up, trailing_distance_down, direction)
+var cyd = c.create(c.STATUS_NEW(), direction, na, qty, tp_distance, win_distance, fee)
+
+position_increased = ta.change(math.abs(strategy.position_size)) > 0
+trigger_changed    = ta.change(trl.trigger_price) != 0
+is_big_bar = 100.0*math.abs(close - open)/open > 2.0
+
+var continue_on_bar = 0
+
+if is_big_bar and from <= time("")
+    label.new(bar_index, high, "BIGBAR!!!", textcolor = color.white)
+    continue_on_bar := bar_index + 360
+
+if from <= time("") and (bar_index > continue_on_bar)
+    trl.run()
+
+    if strategy.position_size == 0
+        cyd.nof_tps := 0
+
+    cyd.trade_signal := if position_increased
+        cyd.order_qty := if strategy.position_size == 0 
+            QTY_BASE
+        else
+            if (cyd.nof_tps > 0) and (cyd.nof_tps % martingale_after_n_tp == 0)
+                cyd.nof_tps := 0
+                cyd.total_qty*martingale_factor
+                // math.pow(MARTINGALE_FACTOR, cyd.nof_tps/MARTINGALE_AFTER_N_TP) * QTY_BASE
+            else 
+                cyd.order_qty
+        cyd.order_price := trl.trigger_price
+        cyd.order_amt := cyd.order_qty * cyd.order_price
+        true
+    else 
+        false
+
+    // h.dd(direction == trl.direction, 18482)
+    if (direction == trl.direction) and trigger_changed and not position_increased
+        // qty := cyd.orders.size() == 0 ? QTY_BASE : math.pow(MARTINGALE_FACTOR, cyd.orders.size()) * QTY_BASE
+        cyd.order_qty := if strategy.position_size == 0 
+            QTY_BASE
+        else
+            if (cyd.nof_tps > 0) and (cyd.nof_tps % martingale_after_n_tp == 0)
+                cyd.nof_tps := 0
+                math.abs(strategy.position_size) * martingale_factor
+                // math.pow(MARTINGALE_FACTOR, cyd.nof_tps/MARTINGALE_AFTER_N_TP) * QTY_BASE
+            else 
+                cyd.order_qty
+        _dir = is_long() ? "LONG" : "SHORT"
+        _act = is_long() ? "XBUY" : "XSELL"
+        xbuy_msg = symbol + "_" + _dir + " " + _act + " " + str.tostring(cyd.order_qty) + "@" + str.tostring( b.round_to_minprice(trl.trigger_price))   // BTCUSDT_LONG XBUY 0.0001@65159.54
+        // label.new(bar_index, high, xbuy_msg, textcolor = color.white )
+        alert(xbuy_msg, alert.freq_all)
+        // h.dd(xbuy_msg, 18300, 18600)
+        _nact = is_long() ? "SELL" : "BUY"
+        tp_message = symbol + "_" + _dir + " " + _nact + " " + str.tostring(cyd.order_qty) + "@" + str.tostring(b.round_to_minprice(h.offset(trl.trigger_price, direction*tp_distance)))
+        // label.new(bar_index, high, tp_message, textcolor = color.white)
+        strategy.order("t", direction == DIR_LONG ? strategy.long : strategy.short, cyd.order_qty, trl.trigger_price, comment="t_"+str.tostring(cyd.orders.size()), alert_message=tp_message )
+
+    cyd.run()
+
+    if position_increased
+        strategy.order("tp_"+str.tostring(cyd.orders.size()-1), direction == DIR_LONG ? strategy.short : strategy.long, cyd.order_qty, cyd.tp_price, disable_alert=true)
+
+    if not na(cyd.win_history)
+        close_message = symbol + " CLOSE"
+        strategy.cancel_all()
+        strategy.close_all("🥳", alert_message = close_message)
+
+plot(display=display.status_line, color=color.yellow, title="strategy.equity", series=strategy.equity, precision=4, editable=false)
+
+plot(display=display.data_window, color=color.white, title="bar_index", series=bar_index, precision = 0, editable=false)
+
+plot(display=display.all, color=trl.is_up() ? #dc52ff73 : #c78e4473, title="trigger_price", series=trl.trigger_price, force_overlay = true, style=plot.style_stepline_diamond)
+plot(display=display.pane + display.price_scale, color=color.aqua, title="avg_price", series=cyd.avg_price, style=plot.style_linebr, linewidth=2)
+plot(display=display.pane + display.price_scale, color=color.red, title="tp_price", series=cyd.tp_price, style=plot.style_linebr)
+plot(display=display.data_window, color=color.yellow, title="order_amt", series=cyd.order_amt, style=plot.style_linebr, precision=2, editable=false)
+plot(display=display.data_window+display.status_line, color=color.white, title="order_qty", series=cyd.order_qty, style=plot.style_linebr, precision=1, editable=false)
+plot(display=display.data_window, color=color.blue, title="position_size", series=strategy.position_size, precision=2, editable=false)
+plot(display=display.data_window, color=color.teal, title="total_amt", series=cyd.total_amt, precision=2, editable=false)
+plot(display=display.data_window, color=color.teal, title="max_total_amt", series=ta.max(cyd.total_amt), precision=2, editable=false)
+plot(display=display.data_window, color=color.teal, title="nof_tps", series=cyd.nof_tps, precision=0, editable=false)
+
+plotshape(display=display.pane, color=direction == DIR_LONG ? color.green:color.red, location=location.absolute, size=size.small, offset=0, style=shape.labelup, series=cyd.order_history, editable=false)
+plotshape(display=display.pane, color=direction==DIR_LONG?color.red:color.green, location=location.absolute, size=size.small, offset=0, style=shape.labeldown, series=cyd.tp_history, editable=false)
+plotshape(display=display.pane, color=color.yellow, location=location.absolute, size=size.small, offset=0, style=shape.labeldown, series=cyd.win_history, editable=false)
